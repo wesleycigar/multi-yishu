@@ -1,0 +1,6 @@
+# 木雷易术引擎 · 云端部署依赖
+flask>=3.0
+lunar-python>=1.2.0
+pandas>=2.0
+pyarrow>=14.0
+gunicorn>=21.0
