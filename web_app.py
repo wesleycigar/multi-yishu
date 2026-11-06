@@ -608,6 +608,22 @@ HTML_TEMPLATE = """
             <div id="gua-visual"></div>
         </div>
 
+        <div class="card" id="sym-card" style="display:none">
+            <h3 style="color:#e8c170; margin-bottom:6px;">☯ 对称性面板 · 本 / 错 / 综 / 互</h3>
+            <div style="color:#9aa; font-size:12px; margin-bottom:10px;">错卦＝六爻全反；综卦＝上下颠倒；互卦＝取 2·3·4 与 3·4·5 爻重组成卦。下方标注与本卦的汉明距离（0 最近，6 最远）。</div>
+            <div id="sym-body"></div>
+        </div>
+
+        <div class="card" id="cal-card" style="display:none">
+            <h3 style="color:#e8c170; margin-bottom:6px;">🌗 历法面板 · 节气 / 真太阳时 / 月相 / 岁星</h3>
+            <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:10px;">
+                <div><label style="font-size:12px;color:#9aa;">经度</label><br><input type="number" id="cal-lng" value="116.4" step="0.1" style="width:88px;"></div>
+                <div><label style="font-size:12px;color:#9aa;">纬度</label><br><input type="number" id="cal-lat" value="39.9" step="0.1" style="width:88px;"></div>
+                <button onclick="renderCalPanel()" style="width:auto;margin:0;padding:8px 14px;">按此刻重算</button>
+            </div>
+            <div id="cal-body"></div>
+        </div>
+
         <div class="card" id="result-card" style="display:none">
             <h3 style="color:#e8c170; margin-bottom:15px;">结果</h3>
             <div class="result" id="result"></div>
@@ -644,6 +660,84 @@ HTML_TEMPLATE = """
             if (tab === 'visits') loadVisits();
         }
         
+        async function renderSymPanel(guaName, dong) {
+            const card = document.getElementById("sym-card");
+            const body = document.getElementById("sym-body");
+            if (!guaName) { card.style.display = "none"; return; }
+            try {
+                let url = "/api/symmetry?gua=" + encodeURIComponent(guaName);
+                if (dong && dong.length) url += "&dong=" + encodeURIComponent(dong.join(","));
+                const r = await (await fetch(url)).json();
+                if (!r.ok) throw new Error(r.error || "无返回");
+                const dist = r.distances || {};
+                let h = '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px;">';
+                (r.views || []).forEach(function(v) {
+                    const isBase = (v.view === "本卦");
+                    const dd = dist[v.view];
+                    const tag = dd ? ('<div style="color:#8fd0ff;font-size:0.75rem;margin-top:4px;">距本卦 ' + dd.hamming + ' 爻 · 相似 ' + Number(dd.similarity).toFixed(2) + '</div>') : '';
+                    h += '<div style="border:1px solid ' + (isBase ? "#e8c170" : "#33334f") + ';border-radius:10px;padding:10px 12px;background:' + (isBase ? "rgba(232,193,112,0.08)" : "rgba(255,255,255,0.02)") + ';">'
+                       + '<div style="color:#9aa;font-size:0.75rem;">' + v.view + '</div>'
+                       + '<div style="color:' + (isBase ? "#e8c170" : "#dddddd") + ';font-size:1.05rem;font-weight:600;margin:2px 0;">' + esc(v.name) + '</div>'
+                       + '<div style="color:#9aa;font-size:0.78rem;">上' + esc(v.upper) + '（' + esc(v.upper_nature) + '）· 下' + esc(v.lower) + '（' + esc(v.lower_nature) + '）</div>'
+                       + '<div style="color:#8fd0ff;font-family:monospace;font-size:0.8rem;">' + v.binary + ' · #' + v.code + '</div>'
+                       + tag + '</div>';
+                });
+                h += '</div>';
+                const ss = r.self_symmetric || {};
+                if (ss["错卦自同"] || ss["综卦自同"]) {
+                    h += '<div style="color:#e8c170;font-size:0.78rem;margin-top:8px;">自同标记：'
+                       + (ss["错卦自同"] ? "错卦自同（六爻两两对称） " : "")
+                       + (ss["综卦自同"] ? "综卦自同（上下颠倒不变）" : "") + '</div>';
+                }
+                body.innerHTML = h;
+                card.style.display = "block";
+            } catch (e) {
+                card.style.display = "none";
+            }
+        }
+
+        async function renderCalPanel() {
+            const card = document.getElementById("cal-card");
+            const body = document.getElementById("cal-body");
+            if (!card || !body) return;
+            const pad = n => String(n).padStart(2, "0");
+            const now = new Date();
+            const ds = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+            const ts = pad(now.getHours()) + ":" + pad(now.getMinutes());
+            const lngEl = document.getElementById("cal-lng");
+            const latEl = document.getElementById("cal-lat");
+            const lng = parseFloat(lngEl && lngEl.value ? lngEl.value : 116.4);
+            const lat = parseFloat(latEl && latEl.value ? latEl.value : 39.9);
+            card.style.display = "block";
+            body.innerHTML = '<div style="color:#9aa;font-size:0.85rem;">计算中…</div>';
+            try {
+                const r = await (await fetch("/api/calendar?date=" + ds + "&time=" + ts + "&lng=" + lng + "&lat=" + lat)).json();
+                if (!r.ok) throw new Error(r.error || "无返回");
+                const term = r.solar_term || {};
+                const sun = r.sun || {};
+                const moon = r.moon || {};
+                const jup = r.jupiter || {};
+                const items = [
+                    ["当前节气", (term.prev ? term.prev.name : "—") + " → " + (term.next ? term.next.name : "—"), term.next ? ("下个节气 " + term.next.time_bj) : ""],
+                    ["太阳黄经", sun.longitude_deg + "°", "二十四节气＝黄经每 15° 一刀"],
+                    ["真太阳时", r.true_solar_time, "均时差 " + sun.equation_of_time_min + " 分 · 经度修正 " + sun.longitude_correction_min + " 分"],
+                    ["月相", moon.phase, "月龄 " + moon.age_days + " 天 · 照亮 " + Math.round((moon.illum_frac || 0) * 100) + "%"],
+                    ["岁星", jup.zhi + "（" + jup.xi + "）", "木星周期 " + jup.period_years + " 年"]
+                ];
+                let h = '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px;">';
+                items.forEach(function(it) {
+                    h += '<div style="border:1px solid #33334f;border-radius:10px;padding:10px 12px;background:rgba(255,255,255,0.02);">'
+                       + '<div style="color:#9aa;font-size:0.75rem;">' + it[0] + '</div>'
+                       + '<div style="color:#e8c170;font-size:1.02rem;font-weight:600;margin:2px 0;word-break:break-all;">' + esc(String(it[1])) + '</div>'
+                       + '<div style="color:#9aa;font-size:0.74rem;">' + esc(String(it[2])) + '</div></div>';
+                });
+                h += '</div>';
+                body.innerHTML = h;
+            } catch (e) {
+                body.innerHTML = '<div style="color:#e8a0a0;font-size:0.85rem;">历法计算失败：' + esc(e.message) + '</div>';
+            }
+        }
+
         function showResult(text) {
             document.getElementById('result').textContent = text;
             document.getElementById('result-card').style.display = 'block';
@@ -804,6 +898,7 @@ HTML_TEMPLATE = """
         }
         loadToday();
         loadProfile();
+        renderCalPanel();
         fillNow();
 
         function toggleQigua() {
@@ -836,6 +931,10 @@ HTML_TEMPLATE = """
                 renderGua(result.gua_visual);
                 window._lastGua = result.gua_visual;
                 showResult(result.report);
+                if (result.gua_visual && result.gua_visual.ben) {
+                    renderSymPanel(result.gua_visual.ben.name, result.gua_visual.dong);
+                }
+                renderCalPanel();
             } catch (e) {
                 showResult('出错了: ' + e.message);
             }
