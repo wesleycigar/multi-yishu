@@ -85,7 +85,7 @@ def log_outcome(sources, hit, payload=None):
         "sources": list(sources),
     }
     if isinstance(payload, dict):
-        for k in ("num1", "num2", "question_type", "direction", "agreement", "conflict_level"):
+        for k in ("num1", "num2", "question_type", "direction", "agreement", "conflict_level", "dirs"):
             if k in payload:
                 rec[k] = payload[k]
     try:

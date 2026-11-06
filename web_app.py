@@ -971,10 +971,13 @@ HTML_TEMPLATE = """
             const msg = document.getElementById('cons-judge-msg');
             if (!ctx || !last) { msg.textContent = '没有可记录的结果'; return; }
             try {
+                const dirs = {};
+                (last.votes || []).forEach(function (v) { if (v && v.source) dirs[v.source] = v.dir; });
                 const r = await postData('/api/consensus/outcome', {
                     hit: hit, sources: last.sources, num1: ctx.num1, num2: ctx.num2,
                     question_type: ctx.question_type, direction: last.direction,
-                    agreement: last.agreement, conflict_level: last.conflict_level
+                    agreement: last.agreement, conflict_level: last.conflict_level,
+                    dirs: dirs
                 });
                 window._lastConsResult = null;
                 const w = r.weights || {};
