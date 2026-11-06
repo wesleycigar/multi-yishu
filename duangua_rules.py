@@ -493,6 +493,13 @@ def full_duangua(ben_gua_name, dong_yao_list, ri_gan, ri_zhi, yue_zhi, question_
             lines.append(f"\n📜 【典籍溯源】（王弼《周易注》）")
             lines.append(trace)
 
+    # 10.5 可信度分级（第六段：溯源与主张分级）
+    try:
+        from credibility import grading_block
+        lines += grading_block(ben_gua_name, yong_lq, score)
+    except Exception:
+        pass
+
     # 11. 语料佐证 + 当代白话解读（五段式补全）
     try:
         from analysis_enhance import corpus_evidence, baihua
