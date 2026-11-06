@@ -149,7 +149,7 @@ def get_api_key():
     return ""
 
 
-def deepseek_interpret(prompt, temperature=0.6, max_tokens=800):
+def deepseek_interpret(prompt, temperature=0.6, max_tokens=1400):
     """调用 DeepSeek Chat API 返回大师级白话解读（OpenAI 兼容端点）"""
     import urllib.request, json
     key = get_api_key()
