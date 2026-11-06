@@ -1678,6 +1678,48 @@ def api_consults():
         return {"records": [], "error": str(e)}
 
 
+# ========== 象数重构 V2：对称性 / 历法（只读接口） ==========
+@app.route('/api/symmetry', methods=['GET', 'POST'])
+def api_symmetry():
+    """卦象四视图：本/错/综/互（有动爻附变卦）。入参 gua / code / upper+lower，可选 dong"""
+    try:
+        import hex_codec as hc
+        if request.method == 'POST':
+            data = request.get_json(silent=True) or {}
+        else:
+            data = {k: request.args.get(k) for k in ('gua', 'code', 'upper', 'lower', 'dong')}
+        dong = data.get('dong') or []
+        if isinstance(dong, str):
+            dong = [x.strip() for x in dong.replace('，', ',').split(',') if x.strip()]
+        code = hc.encode_gua(gua=data.get('gua'), upper=data.get('upper'),
+                             lower=data.get('lower'), code=data.get('code'))
+        if code is None:
+            return {"ok": False, "error": "请提供 gua / code / upper+lower 之一"}, 400
+        return hc.four_views(code, dong)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
+
+
+@app.route('/api/calendar', methods=['GET', 'POST'])
+def api_calendar():
+    """天文历法：节气、太阳黄经、真太阳时、月相、岁星"""
+    try:
+        import calendar_astro as ca
+        from datetime import datetime
+        if request.method == 'POST':
+            data = request.get_json(silent=True) or {}
+        else:
+            data = {k: request.args.get(k) for k in ('date', 'time', 'lng', 'lat')}
+        now = datetime.now()
+        date_str = data.get('date') or now.strftime('%Y-%m-%d')
+        time_str = data.get('time') or now.strftime('%H:%M')
+        lng = float(data.get('lng') or data.get('longitude') or 116.4)
+        lat = float(data.get('lat') or data.get('latitude') or 39.9)
+        return ca.compute(date_str, time_str, lng, lat)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
+
+
 if __name__ == '__main__':
     print("=" * 50)
     print("木雷易术引擎 - 本地Web服务")
