@@ -612,6 +612,12 @@ HTML_TEMPLATE = """
             <h3 style="color:#e8c170; margin-bottom:6px;">⚖️ 三路合议 · 六爻 / 梅花 / 奇门</h3>
             <div style="color:#9aa; font-size:12px; margin-bottom:10px;">把三条独立推演压成「方向 · 强度 · 时间窗」，给出一致度与冲突等级；分歧达到 0.7 时不合并结论，改为吉向/凶向双解并列。</div>
             <div id="cons-body"></div>
+            <div id="cons-judge" style="display:none; margin-top:14px; border-top:1px solid #2a3140; padding-top:12px;">
+                <div style="color:#9aa; font-size:11px; margin-bottom:8px;">🧪 回测台账：这局结论最终兑现了吗？记录后会按各路命中率自动校准权重。</div>
+                <button class="btn" onclick="judgeConsensus(true)">✅ 兑现了</button>
+                <button class="btn" onclick="judgeConsensus(false)" style="margin-left:8px;">❌ 没兑现</button>
+                <span id="cons-judge-msg" style="color:#8fd0ff; font-size:12px; margin-left:10px;"></span>
+            </div>
         </div>
 
         <div class="card" id="sym-card" style="display:none">
@@ -949,8 +955,33 @@ HTML_TEMPLATE = """
                 html += '</div>';
                 html += '<div style="white-space:pre-wrap; margin-top:12px; color:#cfd6e0; font-size:12px; line-height:1.7;">' + r.text + '</div>';
                 body.innerHTML = html;
+                window._lastConsResult = r;
+                const judge = document.getElementById('cons-judge');
+                judge.style.display = 'block';
+                document.getElementById('cons-judge-msg').textContent =
+                    r.trained ? ('已回测 ' + r.trained + ' 例') : '尚无回测记录';
             } catch (e) {
                 body.innerHTML = '<div style="color:#e8846a;">合议出错: ' + e.message + '</div>';
+            }
+        }
+
+        async function judgeConsensus(hit) {
+            const ctx = window._lastCons;
+            const last = window._lastConsResult;
+            const msg = document.getElementById('cons-judge-msg');
+            if (!ctx || !last) { msg.textContent = '没有可记录的结果'; return; }
+            try {
+                const r = await postData('/api/consensus/outcome', {
+                    hit: hit, sources: last.sources, num1: ctx.num1, num2: ctx.num2,
+                    question_type: ctx.question_type, direction: last.direction,
+                    agreement: last.agreement, conflict_level: last.conflict_level
+                });
+                window._lastConsResult = null;
+                const w = r.weights || {};
+                msg.textContent = (hit ? '✅ 已记为兑现' : '❌ 已记为落空') +
+                    ' · 累计 ' + r.trained + ' 例 · 六爻 ' + w['六爻'] + ' / 梅花 ' + w['梅花'] + ' / 奇门 ' + w['奇门'];
+            } catch (e) {
+                msg.textContent = '记录失败: ' + e.message;
             }
         }
 
@@ -1354,7 +1385,8 @@ def api_liuyao():
         else:
             kwargs.update(num1=_i(data.get('num1')), num2=_i(data.get('num2')))
         # 月建日辰不再硬编码，由 qigua_and_duangua 按实际问卦时间自动取
-        report = qigua_and_duangua(**kwargs)
+        meta6 = {}
+        report = qigua_and_duangua(**kwargs, meta_out=meta6)
 
         gua_visual = None
         try:
@@ -1386,6 +1418,16 @@ def api_liuyao():
                 pass
         except Exception:
             gua_visual = None
+                # 第七段之外再补「一致度与置信」：仅报数起卦可跑三路
+        if method == 'number':
+            try:
+                cons = _consensus_run(_i(data.get('num1')), _i(data.get('num2')),
+                                      _s(data, 'question_type', '综合'),
+                                      _s(data, 'gender', '男'), meta6)
+                if cons.get('sources'):
+                    report = report + "\n\n" + cons.get('text', '')
+            except Exception:
+                pass
         return {"report": report, "gua_visual": gua_visual}
     except Exception as e:
         return {"report": f"出错了: {str(e)}"}
@@ -1865,23 +1907,21 @@ def api_calendar():
         return {"ok": False, "error": str(e)}, 500
 
 
-@app.route('/api/consensus', methods=['POST'])
-def api_consensus():
-    """三路合议：六爻 / 梅花 / 奇门 → 方向·强度·时间窗 + 冲突分级"""
-    data = request.json or {}
-    qt = _s(data, 'question_type', '财运')
-    num1 = _i(data.get('num1')) or 3
-    num2 = _i(data.get('num2')) or 8
+def _consensus_run(num1, num2, qt, gender='男', meta6=None):
+    """三路合议的公共实现：六爻（可复用传入）→ 梅花 → 奇门"""
     metas = []
-    try:
-        from qigua import qigua_and_duangua
-        m1 = {}
-        qigua_and_duangua(method="number", num1=num1, num2=num2,
-                          question_type=qt, gender=_s(data, 'gender', '男'), meta_out=m1)
-        if m1:
-            metas.append(m1)
-    except Exception:
-        pass
+    if meta6:
+        metas.append(meta6)
+    else:
+        try:
+            from qigua import qigua_and_duangua
+            m1 = {}
+            qigua_and_duangua(method="number", num1=num1, num2=num2,
+                              question_type=qt, gender=gender, meta_out=m1)
+            if m1:
+                metas.append(m1)
+        except Exception:
+            pass
     try:
         import datetime
         from meihua import meihua_duangua
@@ -1897,18 +1937,40 @@ def api_consensus():
         from qimen import qimen_paipan
         now = datetime.datetime.now()
         m3 = {}
-        qimen_paipan(now.year, now.month, now.day, now.hour,
-                     None, qt, meta_out=m3)
+        qimen_paipan(now.year, now.month, now.day, now.hour, None, qt, meta_out=m3)
         if m3:
             metas.append(m3)
     except Exception:
         pass
     import consensus
-    from flask import jsonify
     r = consensus.assess(metas)
     r['sources'] = [m.get('source') for m in metas]
     r['ques'] = qt
-    return jsonify(r)
+    return r
+
+
+@app.route('/api/consensus', methods=['POST'])
+def api_consensus():
+    """三路合议：六爻 / 梅花 / 奇门 → 方向·强度·时间窗 + 冲突分级"""
+    from flask import jsonify
+    data = request.json or {}
+    qt = _s(data, 'question_type', '财运')
+    num1 = _i(data.get('num1')) or 3
+    num2 = _i(data.get('num2')) or 8
+    return jsonify(_consensus_run(num1, num2, qt, _s(data, 'gender', '男')))
+
+
+@app.route('/api/consensus/outcome', methods=['POST'])
+def api_consensus_outcome():
+    """回测台账：记一笔真实结果，按各路命中/落空更新权重"""
+    from flask import jsonify
+    data = request.json or {}
+    sources = data.get('sources') or ['六爻', '梅花', '奇门']
+    sources = [x for x in sources if x in ('六爻', '梅花', '奇门')]
+    if not sources:
+        sources = ['六爻', '梅花', '奇门']
+    import consensus
+    return jsonify(consensus.log_outcome(sources, bool(data.get('hit')), data))
 
 
 if __name__ == '__main__':

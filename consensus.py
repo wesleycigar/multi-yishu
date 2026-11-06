@@ -22,6 +22,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEIGHT_FILE = os.path.join(HERE, "consensus_weights.json")
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outcome_log.jsonl")
 
 DEFAULT_WEIGHTS = {"六爻": 0.45, "梅花": 0.30, "奇门": 0.25}
 
@@ -61,6 +62,40 @@ def save_weights(weights):
         return True
     except Exception:
         return False
+
+
+def count_outcomes():
+    """回测台账已积累多少例"""
+    try:
+        with open(LOG_FILE, encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip())
+    except Exception:
+        return 0
+
+
+def log_outcome(sources, hit, payload=None):
+    """
+    记一笔真实结果：写台账 + 按各路更新权重。
+    sources: 参与本次合议的路名列表；hit: 该结论最终是否兑现。
+    """
+    import time as _time
+    rec = {
+        "ts": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        "hit": bool(hit),
+        "sources": list(sources),
+    }
+    if isinstance(payload, dict):
+        for k in ("num1", "num2", "question_type", "direction", "agreement", "conflict_level"):
+            if k in payload:
+                rec[k] = payload[k]
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    for src in sources:
+        record_outcome(src, hit)
+    return {"ok": True, "weights": load_weights(), "trained": count_outcomes()}
 
 
 def record_outcome(source, hit):
@@ -214,6 +249,8 @@ def assess(metas):
     """一步出结果 + 文本"""
     r = vote(metas)
     r["text"] = render(r)
+    r["weights"] = load_weights()
+    r["trained"] = count_outcomes()
     return r
 
 
