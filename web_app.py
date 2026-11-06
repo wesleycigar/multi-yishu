@@ -608,6 +608,12 @@ HTML_TEMPLATE = """
             <div id="gua-visual"></div>
         </div>
 
+        <div class="card" id="cons-card" style="display:none">
+            <h3 style="color:#e8c170; margin-bottom:6px;">⚖️ 三路合议 · 六爻 / 梅花 / 奇门</h3>
+            <div style="color:#9aa; font-size:12px; margin-bottom:10px;">把三条独立推演压成「方向 · 强度 · 时间窗」，给出一致度与冲突等级；分歧达到 0.7 时不合并结论，改为吉向/凶向双解并列。</div>
+            <div id="cons-body"></div>
+        </div>
+
         <div class="card" id="sym-card" style="display:none">
             <h3 style="color:#e8c170; margin-bottom:6px;">☯ 对称性面板 · 本 / 错 / 综 / 互</h3>
             <div style="color:#9aa; font-size:12px; margin-bottom:10px;">错卦＝六爻全反；综卦＝上下颠倒；互卦＝取 2·3·4 与 3·4·5 爻重组成卦。下方标注与本卦的汉明距离（0 最近，6 最远）。</div>
@@ -910,6 +916,44 @@ HTML_TEMPLATE = """
         }
         fillNow();
 
+        async function runConsensus() {
+            const body = document.getElementById('cons-body');
+            const card = document.getElementById('cons-card');
+            const ctx = window._lastCons;
+            if (!ctx || !ctx.num1) {
+                card.style.display = 'block';
+                body.innerHTML = '<div style="color:#9aa; font-size:12px;">当前不是报数起卦，三路合议需同一组报数。请用「报数起卦」起一卦后再看合议。</div>';
+                return;
+            }
+            body.innerHTML = '<div style="color:#9aa;">三路推演中…</div>';
+            card.style.display = 'block';
+            try {
+                const r = await postData('/api/consensus', ctx);
+                const col = r.direction > 0.35 ? '#8fd0ff' : (r.direction < -0.35 ? '#e8846a' : '#e8c170');
+                let html = '<div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:12px;">';
+                html += '<div><div style="color:#9aa; font-size:11px;">综合方向</div><div style="color:' + col + '; font-size:20px; font-weight:700;">' + r.direction_label + '</div></div>';
+                html += '<div><div style="color:#9aa; font-size:11px;">一致度</div><div style="font-size:20px;">' + Math.round(r.agreement * 100) + '%</div></div>';
+                html += '<div><div style="color:#9aa; font-size:11px;">冲突等级</div><div style="font-size:20px;">' + r.conflict_level + '</div></div>';
+                html += '<div><div style="color:#9aa; font-size:11px;">置信</div><div style="font-size:20px;">' + r.confidence_label + '</div></div>';
+                html += '<div><div style="color:#9aa; font-size:11px;">时间窗</div><div style="font-size:15px;">' + r.window + '</div></div>';
+                html += '</div>';
+                html += '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px;">';
+                for (const v of r.votes) {
+                    const vc = v.dir > 0.35 ? '#8fd0ff' : (v.dir < -0.35 ? '#e8846a' : '#e8c170');
+                    html += '<div style="border:1px solid #2a3140; border-radius:10px; padding:10px; background:#11151c;">';
+                    html += '<div style="color:#e8c170; font-weight:600; margin-bottom:4px;">' + v.source + '　<span style="color:' + vc + '; font-size:13px;">' + (v.dir > 0 ? '+' : '') + v.dir.toFixed(2) + '</span></div>';
+                    html += '<div style="color:#9aa; font-size:11px; line-height:1.6;">' + v.note + '</div>';
+                    html += '<div style="color:#6a7383; font-size:11px; margin-top:4px;">权重 ' + v.weight.toFixed(2) + '</div>';
+                    html += '</div>';
+                }
+                html += '</div>';
+                html += '<div style="white-space:pre-wrap; margin-top:12px; color:#cfd6e0; font-size:12px; line-height:1.7;">' + r.text + '</div>';
+                body.innerHTML = html;
+            } catch (e) {
+                body.innerHTML = '<div style="color:#e8846a;">合议出错: ' + e.message + '</div>';
+            }
+        }
+
         async function doLiuyao() {
             showResult('断卦中...');
             try {
@@ -930,11 +974,13 @@ HTML_TEMPLATE = """
                 const result = await postData('/api/liuyao', data);
                 renderGua(result.gua_visual);
                 window._lastGua = result.gua_visual;
+                window._lastCons = (method === 'number') ? { num1: data.num1, num2: data.num2, question_type: data.question_type } : null;
                 showResult(result.report);
                 if (result.gua_visual && result.gua_visual.ben) {
                     renderSymPanel(result.gua_visual.ben.name, result.gua_visual.dong);
                 }
                 renderCalPanel();
+                runConsensus();
             } catch (e) {
                 showResult('出错了: ' + e.message);
             }
@@ -1817,6 +1863,52 @@ def api_calendar():
         return ca.compute(date_str, time_str, lng, lat)
     except Exception as e:
         return {"ok": False, "error": str(e)}, 500
+
+
+@app.route('/api/consensus', methods=['POST'])
+def api_consensus():
+    """三路合议：六爻 / 梅花 / 奇门 → 方向·强度·时间窗 + 冲突分级"""
+    data = request.json or {}
+    qt = _s(data, 'question_type', '财运')
+    num1 = _i(data.get('num1')) or 3
+    num2 = _i(data.get('num2')) or 8
+    metas = []
+    try:
+        from qigua import qigua_and_duangua
+        m1 = {}
+        qigua_and_duangua(method="number", num1=num1, num2=num2,
+                          question_type=qt, gender=_s(data, 'gender', '男'), meta_out=m1)
+        if m1:
+            metas.append(m1)
+    except Exception:
+        pass
+    try:
+        import datetime
+        from meihua import meihua_duangua
+        m2 = {}
+        meihua_duangua(num1, num2, datetime.datetime.now().hour,
+                       question_type=qt, meta_out=m2)
+        if m2:
+            metas.append(m2)
+    except Exception:
+        pass
+    try:
+        import datetime
+        from qimen import qimen_paipan
+        now = datetime.datetime.now()
+        m3 = {}
+        qimen_paipan(now.year, now.month, now.day, now.hour,
+                     None, qt, meta_out=m3)
+        if m3:
+            metas.append(m3)
+    except Exception:
+        pass
+    import consensus
+    from flask import jsonify
+    r = consensus.assess(metas)
+    r['sources'] = [m.get('source') for m in metas]
+    r['ques'] = qt
+    return jsonify(r)
 
 
 if __name__ == '__main__':

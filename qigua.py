@@ -194,6 +194,8 @@ def qigua_and_duangua(method="time", **kwargs):
     其他参数：ri_gan, ri_zhi, yue_zhi, question_type, gender
     若未显式传 ri_gan/ri_zhi/yue_zhi，将按实际问卦时间自动取月建日辰。
     """
+    meta_out = kwargs.pop("meta_out", None)
+
     # 1. 起卦
     if method == "time":
         year = kwargs.get("year")
@@ -235,7 +237,7 @@ def qigua_and_duangua(method="time", **kwargs):
         print(f"月建日辰: 月建{yue_zhi} 日辰{ri_gan}{ri_zhi}")
     
     from duangua_rules import full_duangua
-    return full_duangua(ben_gua, dong_list, ri_gan, ri_zhi, yue_zhi, question_type, gender)
+    return full_duangua(ben_gua, dong_list, ri_gan, ri_zhi, yue_zhi, question_type, gender, meta_out=meta_out)
 
 
 if __name__ == "__main__":

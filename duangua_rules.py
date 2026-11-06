@@ -329,7 +329,7 @@ def give_advice(result, yong_lq, question_type, score):
 
 
 # ========== 综合断卦报告 ==========
-def full_duangua(ben_gua_name, dong_yao_list, ri_gan, ri_zhi, yue_zhi, question_type="财运", gender="男"):
+def full_duangua(ben_gua_name, dong_yao_list, ri_gan, ri_zhi, yue_zhi, question_type="财运", gender="男", meta_out=None):
     """完整断卦流程"""
     lines = []
     lines.append("=" * 60)
@@ -507,6 +507,19 @@ def full_duangua(ben_gua_name, dong_yao_list, ri_gan, ri_zhi, yue_zhi, question_
         lines += baihua("六爻", f"{result}。用神{yong_lq}，{advice[0] if advice else ''}")
     except Exception:
         pass
+
+    if meta_out is not None:
+        try:
+            meta_out.update({
+                "source": "六爻", "ben_gua": ben_gua_name,
+                "dong": list(dong_yao_list or []),
+                "ri": f"{ri_gan}{ri_zhi}", "yue": yue_zhi,
+                "question_type": question_type,
+                "verdict": str(result), "score": score,
+                "yongshen": yong_lq,
+            })
+        except Exception:
+            pass
 
     return "\n".join(lines)
 

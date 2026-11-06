@@ -104,7 +104,7 @@ def meihua_qigua(num1, num2, hour_num=None):
     return "未知卦", shang, xia, dong
 
 
-def meihua_duangua(num1, num2, hour_num, question_type="气运", personal_info=None):
+def meihua_duangua(num1, num2, hour_num, question_type="气运", personal_info=None, meta_out=None):
     """
     梅花易数完整断卦
     核心：体卦（我） vs 用卦（事）
@@ -224,6 +224,16 @@ def meihua_duangua(num1, num2, hour_num, question_type="气运", personal_info=N
                          gua_names=guas, brief=f"{result}，{advice}。")
     except Exception:
         pass
+
+    if meta_out is not None:
+        try:
+            meta_out.update({
+                "source": "梅花", "ti": ti, "yong": yong,
+                "ti_wx": ti_wx, "yong_wx": yong_wx,
+                "question_type": question_type, "score": score,
+            })
+        except Exception:
+            pass
 
     return "\n".join(lines)
 

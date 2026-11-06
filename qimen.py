@@ -105,7 +105,7 @@ def _xun_shou(gan, zhi):
     return xun, yi
 
 
-def qimen_paipan(year, month, day, hour, personal_wx=None, question="求财"):
+def qimen_paipan(year, month, day, hour, personal_wx=None, question="求财", meta_out=None):
     """
     奇门遁甲按时辰起局。
     返回九宫盘 + 用神分析。"""
@@ -131,7 +131,7 @@ def qimen_paipan(year, month, day, hour, personal_wx=None, question="求财"):
 
     # 2. 值符、值使：旬首六仪所在宫的星/门
     zhi_fu_gong = dipan[xun_yi]  # 值符星原始宫
-    zhi_fu_xing = next(k for k, v in JIU_XING.items() if v["宫"] == zhi_fu_gong) or "天禽"
+    zhi_fu_xing = next((k for k, v in JIU_XING.items() if v["宫"] == zhi_fu_gong), "天禽")
     zhi_shi_gong = zhi_fu_gong
     zhi_shi_men = BA_MEN_GONG.get(zhi_fu_gong, "中")
     # 值使门飞宫：从值使原始宫按时支顺布九宫（简化：值使随时辰落宫）
@@ -211,6 +211,16 @@ def qimen_paipan(year, month, day, hour, personal_wx=None, question="求财"):
                          brief=f"时柱{time_gz}，{dun}遁{ju}局，值符{zhi_fu_xing}，宜择生门/开门吉方行事。")
     except Exception:
         pass
+
+    if meta_out is not None:
+        try:
+            meta_out.update({
+                "source": "奇门", "question": question,
+                "zhi_fu": zhi_fu_xing, "zhi_shi_men": zhi_shi_men,
+                "shi_gan_gong": shi_gan_gong, "dun": dun, "ju": ju,
+            })
+        except Exception:
+            pass
 
     return "\n".join(lines)
 
