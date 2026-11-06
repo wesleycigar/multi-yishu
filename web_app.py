@@ -1973,7 +1973,13 @@ def api_consensus_outcome():
     if not sources:
         sources = ['六爻', '梅花', '奇门']
     import consensus
-    return jsonify(consensus.log_outcome(sources, bool(data.get('hit')), data))
+    resp = consensus.log_outcome(sources, bool(data.get('hit')), data)
+    try:
+        import feishu_sync
+        feishu_sync.push_outcome(resp.get('rec') or {})
+    except Exception:
+        pass
+    return jsonify(resp)
 
 
 if __name__ == '__main__':

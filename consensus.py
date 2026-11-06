@@ -95,7 +95,7 @@ def log_outcome(sources, hit, payload=None):
         pass
     for src in sources:
         record_outcome(src, hit)
-    return {"ok": True, "weights": load_weights(), "trained": count_outcomes()}
+    return {"ok": True, "weights": load_weights(), "trained": count_outcomes(), "rec": rec}
 
 
 def record_outcome(source, hit):
